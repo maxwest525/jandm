@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   Tempo design tokens — dark-first, Linear-inspired iris.
+   ========================================================= */
+:root,
+.dark {
+  --bg: #0b0b0f;
+  --surface: #131319;
+  --surface-2: #1a1a22;
+  --surface-3: #22222c;
+  --border: #26262f;
+  --border-2: #34343f;
+  --content: #e9e9ef;
+  --muted: #9595a3;
+  --subtle: #63636f;
+  --accent: #7c74ff;
+  --accent-soft: rgba(124, 116, 255, 0.16);
+  --accent-contrast: #ffffff;
+  color-scheme: dark;
+}
+
+.light {
+  --bg: #f6f6f8;
+  --surface: #ffffff;
+  --surface-2: #f2f2f5;
+  --surface-3: #e9e9ee;
+  --border: #e7e7ec;
+  --border-2: #d8d8df;
+  --content: #17171c;
+  --muted: #5f5f6b;
+  --subtle: #9090a0;
+  --accent: #5b54e0;
+  --accent-soft: rgba(91, 84, 224, 0.12);
+  --accent-contrast: #ffffff;
+  color-scheme: light;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--content);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+  overflow: hidden; /* app shell manages its own scroll regions */
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-2);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--subtle);
+  background-clip: content-box;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Skeleton shimmer */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(150, 150, 160, 0.08), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* dnd-kit: hide native focus ring on the drag overlay */
+[data-tempo-overlay] {
+  cursor: grabbing;
+}
+
+/* cmdk command palette */
+.cmd-group [cmdk-group-heading] {
+  padding: 0.5rem 0.5rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--subtle);
+}
+.cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 13px;
+  color: var(--content);
+  cursor: pointer;
+  user-select: none;
+}
+.cmd-item[data-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.cmd-item[data-selected='true'] .text-content {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
