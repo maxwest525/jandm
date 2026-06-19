@@ -5,13 +5,14 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { api } from './client'
-import type { Bootstrap, Comment, Status, Task, TaskDetail } from '../types'
+import type { Activity, Bootstrap, Comment, Status, Task, TaskDetail } from '../types'
 
 export const keys = {
   bootstrap: ['bootstrap'] as const,
   projectTasks: (projectId: string) => ['project', projectId, 'tasks'] as const,
   task: (taskId: string) => ['task', taskId] as const,
   myTasks: (userId: string) => ['myTasks', userId] as const,
+  activity: (projectId: string) => ['activity', projectId] as const,
 }
 
 /* ------------------------------- queries ------------------------------ */
@@ -45,6 +46,14 @@ export function useMyTasks(userId: string | undefined) {
     queryKey: userId ? keys.myTasks(userId) : ['myTasks', 'none'],
     queryFn: () => api.get<Task[]>(`/api/tasks?assignee=${userId}`),
     enabled: !!userId,
+  })
+}
+
+export function useProjectActivity(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId ? keys.activity(projectId) : ['activity', 'none'],
+    queryFn: () => api.get<Activity[]>(`/api/projects/${projectId}/activity`),
+    enabled: !!projectId,
   })
 }
 
@@ -94,6 +103,7 @@ async function settleTasks(qc: QueryClient) {
   await Promise.all([
     qc.invalidateQueries({ queryKey: ['project'] }),
     qc.invalidateQueries({ queryKey: ['myTasks'] }),
+    qc.invalidateQueries({ queryKey: ['activity'] }),
   ])
 }
 
@@ -202,20 +212,21 @@ export function useDeleteTask() {
 
 export interface AddCommentVars {
   taskId: string
-  authorId: string
   body: string
 }
 
 export function useAddComment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ taskId, authorId, body }: AddCommentVars) =>
-      api.post<Comment>(`/api/tasks/${taskId}/comments`, { authorId, body }),
+    // The server attributes the comment to the authenticated user.
+    mutationFn: ({ taskId, body }: AddCommentVars) =>
+      api.post<Comment>(`/api/tasks/${taskId}/comments`, { body }),
     onSuccess: (comment, { taskId }) => {
       qc.setQueryData<TaskDetail>(keys.task(taskId), (old) =>
         old ? { ...old, comments: [...old.comments, comment], commentCount: old.commentCount + 1 } : old,
       )
       patchTaskLists(qc, taskId, (t) => ({ ...t, commentCount: t.commentCount + 1 }))
+      qc.invalidateQueries({ queryKey: ['activity'] })
     },
   })
 }

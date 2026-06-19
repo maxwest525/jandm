@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { MoreHorizontal, Trash2, X } from 'lucide-react'
-import type { Priority, Status } from '../../types'
+import { Lock, MoreHorizontal, Trash2, X } from 'lucide-react'
+import type { Status } from '../../types'
 import {
   PRIORITY_META,
   PRIORITY_ORDER,
@@ -9,7 +9,7 @@ import {
 } from '../../lib/constants'
 import { useApp } from '../../store/AppData'
 import { useAddComment, useDeleteTask, useTaskDetail, useUpdateTask } from '../../api/queries'
-import { formatDateInput, formatRelativeTime, cx } from '../../lib/format'
+import { cx, formatDateInput, formatDue, formatRelativeTime } from '../../lib/format'
 import { Avatar } from '../ui/Avatar'
 import { PriorityIcon } from '../ui/PriorityIcon'
 import { LabelChip } from '../ui/LabelChip'
@@ -21,7 +21,6 @@ export function TaskPanel({ taskId, onClose }: { taskId: string; onClose: () => 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Don't hijack Escape while a field/menu is being edited inside an input.
       if (e.key === 'Escape' && !(e.target instanceof HTMLTextAreaElement)) onClose()
     }
     document.addEventListener('keydown', onKey)
@@ -63,14 +62,8 @@ function PanelHeader({ children, onClose }: { children?: React.ReactNode; onClos
   )
 }
 
-function TaskPanelBody({
-  task,
-  onClose,
-}: {
-  task: import('../../types').TaskDetail
-  onClose: () => void
-}) {
-  const { users, labels, currentUser, userById, labelById } = useApp()
+function TaskPanelBody({ task, onClose }: { task: import('../../types').TaskDetail; onClose: () => void }) {
+  const { users, labels, currentUser, canEdit, userById, labelById } = useApp()
   const update = useUpdateTask()
   const del = useDeleteTask()
   const addComment = useAddComment()
@@ -86,22 +79,25 @@ function TaskPanelBody({
     update.mutate({ id: task.id, patch: p })
 
   const commitTitle = () => {
+    if (!canEdit) return
     const t = title.trim()
     if (t && t !== task.title) patch({ title: t })
     else setTitle(task.title)
   }
   const commitDesc = () => {
+    if (!canEdit) return
     if (desc !== task.description) patch({ description: desc })
   }
 
   const assignee = userById(task.assigneeId)
   const taskLabels = task.labelIds.map((id) => labelById(id)).filter(Boolean)
+  const due = formatDue(task.dueDate)
 
   const submitComment = (e: React.FormEvent) => {
     e.preventDefault()
     const body = comment.trim()
     if (!body) return
-    addComment.mutate({ taskId: task.id, authorId: currentUser.id, body })
+    addComment.mutate({ taskId: task.id, body })
     setComment('')
   }
 
@@ -117,19 +113,18 @@ function TaskPanelBody({
       <PanelHeader onClose={onClose}>
         <span className="rounded bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">{task.projectKey}</span>
         <span className="font-mono text-xs text-subtle">{task.key}</span>
-        <Dropdown label={<MoreHorizontal size={15} />} align="right" width={160}>
-          {(close) => (
-            <button
-              onClick={() => {
-                close()
-                remove()
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
-            >
-              <Trash2 size={14} /> Delete task
-            </button>
-          )}
-        </Dropdown>
+        {canEdit && (
+          <Dropdown label={<MoreHorizontal size={15} />} align="right" width={160}>
+            {(close) => (
+              <button
+                onClick={() => { close(); remove() }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+              >
+                <Trash2 size={14} /> Delete task
+              </button>
+            )}
+          </Dropdown>
+        )}
       </PanelHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -139,6 +134,7 @@ function TaskPanelBody({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={commitTitle}
+            readOnly={!canEdit}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
@@ -147,91 +143,100 @@ function TaskPanelBody({
             }}
             rows={1}
             aria-label="Task title"
-            className="w-full resize-none rounded-lg bg-transparent text-lg font-semibold leading-snug text-content outline-none focus:bg-surface-2/50 focus:px-2 focus:py-1"
+            className={cx(
+              'w-full resize-none rounded-lg bg-transparent text-lg font-semibold leading-snug text-content outline-none',
+              canEdit && 'focus:bg-surface-2/50 focus:px-2 focus:py-1',
+            )}
           />
-          <textarea
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-            onBlur={commitDesc}
-            placeholder="Add a description…"
-            rows={3}
-            aria-label="Task description"
-            className="w-full resize-none rounded-lg bg-transparent text-[13px] leading-relaxed text-muted outline-none placeholder:text-subtle focus:bg-surface-2/50 focus:px-2 focus:py-1.5"
-          />
+          {canEdit || desc ? (
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onBlur={commitDesc}
+              readOnly={!canEdit}
+              placeholder="Add a description…"
+              rows={3}
+              aria-label="Task description"
+              className={cx(
+                'w-full resize-none rounded-lg bg-transparent text-[13px] leading-relaxed text-muted outline-none placeholder:text-subtle',
+                canEdit && 'focus:bg-surface-2/50 focus:px-2 focus:py-1.5',
+              )}
+            />
+          ) : (
+            <p className="text-[13px] text-subtle">No description.</p>
+          )}
         </div>
 
         {/* Properties */}
         <div className="mt-2 space-y-1 border-y border-border px-5 py-4">
           <Row label="Status">
-            <Dropdown
-              label={
-                <span className="flex items-center gap-1.5">
-                  <StatusDot status={task.status} /> {STATUS_META[task.status].label}
-                </span>
-              }
-            >
-              {(close) => (
-                <>
-                  {STATUS_ORDER.map((s) => (
-                    <DropdownItem key={s} active={task.status === s} onClick={() => { patch({ status: s }); close() }}>
-                      <StatusDot status={s} /> {STATUS_META[s].label}
-                    </DropdownItem>
-                  ))}
-                </>
-              )}
-            </Dropdown>
+            {canEdit ? (
+              <Dropdown label={<span className="flex items-center gap-1.5"><StatusDot status={task.status} /> {STATUS_META[task.status].label}</span>}>
+                {(close) => (
+                  <>
+                    {STATUS_ORDER.map((s) => (
+                      <DropdownItem key={s} active={task.status === s} onClick={() => { patch({ status: s }); close() }}>
+                        <StatusDot status={s} /> {STATUS_META[s].label}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            ) : (
+              <Static><StatusDot status={task.status} /> {STATUS_META[task.status].label}</Static>
+            )}
           </Row>
 
           <Row label="Priority">
-            <Dropdown
-              label={
-                <span className="flex items-center gap-1.5">
-                  <PriorityIcon priority={task.priority} /> {PRIORITY_META[task.priority].label}
-                </span>
-              }
-            >
-              {(close) => (
-                <>
-                  {PRIORITY_ORDER.map((p) => (
-                    <DropdownItem key={p} active={task.priority === p} onClick={() => { patch({ priority: p }); close() }}>
-                      <PriorityIcon priority={p} /> {PRIORITY_META[p].label}
-                    </DropdownItem>
-                  ))}
-                </>
-              )}
-            </Dropdown>
+            {canEdit ? (
+              <Dropdown label={<span className="flex items-center gap-1.5"><PriorityIcon priority={task.priority} /> {PRIORITY_META[task.priority].label}</span>}>
+                {(close) => (
+                  <>
+                    {PRIORITY_ORDER.map((p) => (
+                      <DropdownItem key={p} active={task.priority === p} onClick={() => { patch({ priority: p }); close() }}>
+                        <PriorityIcon priority={p} /> {PRIORITY_META[p].label}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            ) : (
+              <Static><PriorityIcon priority={task.priority} /> {PRIORITY_META[task.priority].label}</Static>
+            )}
           </Row>
 
           <Row label="Assignee">
-            <Dropdown
-              label={
-                <span className="flex items-center gap-1.5">
-                  <Avatar user={assignee} size={18} /> {assignee ? assignee.name : 'Unassigned'}
-                </span>
-              }
-            >
-              {(close) => (
-                <>
-                  <DropdownItem active={!task.assigneeId} onClick={() => { patch({ assigneeId: null }); close() }}>
-                    <Avatar size={18} /> Unassigned
-                  </DropdownItem>
-                  {users.map((u) => (
-                    <DropdownItem key={u.id} active={task.assigneeId === u.id} onClick={() => { patch({ assigneeId: u.id }); close() }}>
-                      <Avatar user={u} size={18} /> {u.name}
+            {canEdit ? (
+              <Dropdown label={<span className="flex items-center gap-1.5"><Avatar user={assignee} size={18} /> {assignee ? assignee.name : 'Unassigned'}</span>}>
+                {(close) => (
+                  <>
+                    <DropdownItem active={!task.assigneeId} onClick={() => { patch({ assigneeId: null }); close() }}>
+                      <Avatar size={18} /> Unassigned
                     </DropdownItem>
-                  ))}
-                </>
-              )}
-            </Dropdown>
+                    {users.map((u) => (
+                      <DropdownItem key={u.id} active={task.assigneeId === u.id} onClick={() => { patch({ assigneeId: u.id }); close() }}>
+                        <Avatar user={u} size={18} /> {u.name}
+                      </DropdownItem>
+                    ))}
+                  </>
+                )}
+              </Dropdown>
+            ) : (
+              <Static><Avatar user={assignee} size={18} /> {assignee ? assignee.name : 'Unassigned'}</Static>
+            )}
           </Row>
 
           <Row label="Due date">
-            <input
-              type="date"
-              value={formatDateInput(task.dueDate)}
-              onChange={(e) => patch({ dueDate: e.target.value || null })}
-              className="h-8 rounded-lg border border-border bg-surface px-2 text-[13px] text-content outline-none focus:border-accent"
-            />
+            {canEdit ? (
+              <input
+                type="date"
+                value={formatDateInput(task.dueDate)}
+                onChange={(e) => patch({ dueDate: e.target.value || null })}
+                className="h-8 rounded-lg border border-border bg-surface px-2 text-[13px] text-content outline-none focus:border-accent"
+              />
+            ) : (
+              <Static>{due ? due.label : '—'}</Static>
+            )}
           </Row>
 
           <Row label="Labels" align="start">
@@ -240,31 +245,34 @@ function TaskPanelBody({
                 <LabelChip
                   key={l!.id}
                   label={l!}
-                  onRemove={() => patch({ labelIds: task.labelIds.filter((id) => id !== l!.id) })}
+                  onRemove={canEdit ? () => patch({ labelIds: task.labelIds.filter((id) => id !== l!.id) }) : undefined}
                 />
               ))}
-              <Dropdown label="＋" align="right">
-                {() => (
-                  <>
-                    {labels.map((l) => (
-                      <DropdownItem
-                        key={l.id}
-                        active={task.labelIds.includes(l.id)}
-                        onClick={() =>
-                          patch({
-                            labelIds: task.labelIds.includes(l.id)
-                              ? task.labelIds.filter((id) => id !== l.id)
-                              : [...task.labelIds, l.id],
-                          })
-                        }
-                      >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
-                        {l.name}
-                      </DropdownItem>
-                    ))}
-                  </>
-                )}
-              </Dropdown>
+              {taskLabels.length === 0 && !canEdit && <span className="text-[13px] text-subtle">None</span>}
+              {canEdit && (
+                <Dropdown label="＋" align="right">
+                  {() => (
+                    <>
+                      {labels.map((l) => (
+                        <DropdownItem
+                          key={l.id}
+                          active={task.labelIds.includes(l.id)}
+                          onClick={() =>
+                            patch({
+                              labelIds: task.labelIds.includes(l.id)
+                                ? task.labelIds.filter((id) => id !== l.id)
+                                : [...task.labelIds, l.id],
+                            })
+                          }
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
+                          {l.name}
+                        </DropdownItem>
+                      ))}
+                    </>
+                  )}
+                </Dropdown>
+              )}
             </div>
           </Row>
         </div>
@@ -276,7 +284,7 @@ function TaskPanelBody({
           </h3>
           <div className="space-y-4">
             {task.comments.length === 0 && (
-              <p className="text-[13px] text-subtle">No comments yet. Start the conversation.</p>
+              <p className="text-[13px] text-subtle">No comments yet.</p>
             )}
             {task.comments.map((c) => (
               <div key={c.id} className="flex gap-2.5">
@@ -295,48 +303,50 @@ function TaskPanelBody({
       </div>
 
       {/* Composer */}
-      <form onSubmit={submitComment} className="shrink-0 border-t border-border p-3">
-        <div className="flex items-end gap-2 rounded-xl border border-border bg-surface-2/50 p-2 transition-colors focus-within:border-accent">
-          <Avatar user={currentUser} size={26} />
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitComment(e)
-            }}
-            placeholder="Write a comment…   (⌘↵ to send)"
-            rows={1}
-            aria-label="Write a comment"
-            className="max-h-28 flex-1 resize-none bg-transparent py-1 text-[13px] text-content outline-none placeholder:text-subtle"
-          />
-          <button
-            type="submit"
-            disabled={!comment.trim()}
-            className="h-7 rounded-lg bg-accent px-3 text-[13px] font-medium text-accent-contrast transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
-          >
-            Send
-          </button>
+      {canEdit ? (
+        <form onSubmit={submitComment} className="shrink-0 border-t border-border p-3">
+          <div className="flex items-end gap-2 rounded-xl border border-border bg-surface-2/50 p-2 transition-colors focus-within:border-accent">
+            <Avatar user={currentUser} size={26} />
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitComment(e)
+              }}
+              placeholder="Write a comment…   (⌘↵ to send)"
+              rows={1}
+              aria-label="Write a comment"
+              className="max-h-28 flex-1 resize-none bg-transparent py-1 text-[13px] text-content outline-none placeholder:text-subtle"
+            />
+            <button
+              type="submit"
+              disabled={!comment.trim()}
+              className="h-7 rounded-lg bg-accent px-3 text-[13px] font-medium text-accent-contrast transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3 text-2xs text-subtle">
+          <Lock size={12} /> You have read-only (Viewer) access.
         </div>
-      </form>
+      )}
     </>
   )
 }
 
-function Row({
-  label,
-  align = 'center',
-  children,
-}: {
-  label: string
-  align?: 'center' | 'start'
-  children: React.ReactNode
-}) {
+function Row({ label, align = 'center', children }: { label: string; align?: 'center' | 'start'; children: React.ReactNode }) {
   return (
     <div className={cx('flex gap-3 py-1', align === 'center' ? 'items-center' : 'items-start')}>
       <span className="w-20 shrink-0 pt-1 text-[13px] text-subtle">{label}</span>
       <div className="flex flex-1 justify-end">{children}</div>
     </div>
   )
+}
+
+function Static({ children }: { children: React.ReactNode }) {
+  return <span className="flex items-center gap-1.5 px-2.5 py-1 text-[13px] text-content">{children}</span>
 }
 
 function StatusDot({ status }: { status: Status }) {

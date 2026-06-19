@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { Status, Task } from '../../types'
-import { STATUS_ORDER } from '../../lib/constants'
+import { STATUS_META, STATUS_ORDER } from '../../lib/constants'
 import { useUpdateTask } from '../../api/queries'
 import { BoardColumn } from './BoardColumn'
 import { TaskCard } from '../task/TaskCard'
@@ -154,5 +154,40 @@ export function Board({
         ) : null}
       </DragOverlay>
     </DndContext>
+  )
+}
+
+/** Static board for Viewers — same layout, no drag, no add affordances. */
+export function ReadOnlyBoard({
+  tasks,
+  onOpenTask,
+}: {
+  tasks: Task[]
+  onOpenTask: (id: string) => void
+}) {
+  const cols = group(tasks)
+  return (
+    <div className="flex h-full gap-4 overflow-x-auto px-4 pb-4 sm:px-6">
+      {STATUS_ORDER.map((status) => {
+        const meta = STATUS_META[status]
+        const Icon = meta.icon
+        return (
+          <div key={status} className="flex h-full w-[300px] shrink-0 flex-col">
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Icon size={15} style={{ color: meta.color }} />
+              <h2 className="text-[13px] font-semibold text-content">{meta.label}</h2>
+              <span className="rounded-full bg-surface-2 px-1.5 text-2xs font-medium text-subtle tnum">
+                {cols[status].length}
+              </span>
+            </div>
+            <div className="flex-1 space-y-2 overflow-y-auto p-1">
+              {cols[status].map((task) => (
+                <TaskCard key={task.id} task={task} onOpen={() => onOpenTask(task.id)} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }

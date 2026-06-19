@@ -8,6 +8,22 @@ search; and a cross-project **My Work** view.
 Full-stack and self-contained: **Express + SQLite** on the back end, **React +
 TypeScript + Vite + Tailwind** on the front end. No external services, no API keys.
 
+**Now with** email/password auth and roles (Owner / Member / Viewer), a per-project
+activity feed, a mobile-first board, and a persisted dark/light theme.
+
+## Sign in
+
+The app starts at a login screen. Every demo account uses the password **`tempo`**:
+
+| Account | Email | Role | Can edit? |
+|---|---|---|---|
+| Maya Chen | `maya@tempo.dev` | **Owner** | yes |
+| Sam Rivera | `sam@tempo.dev` | **Member** | yes |
+| Priya Patel | `priya@tempo.dev` | **Viewer** | no (read-only) |
+
+One-click buttons on the login screen sign you in as any of them. Sessions are
+cookie-based (httpOnly); sign out from the sidebar.
+
 ## Run it
 
 ```bash
@@ -36,6 +52,13 @@ npm run typecheck   # tsc --noEmit
 
 ## What’s in it
 
+- **Auth & roles** — email/password sign-in with cookie sessions; **Owner**,
+  **Member**, **Viewer**. Viewers get a read-only app (no drag, no inline edits,
+  no comments); the server enforces it (writes return `403`), the UI reflects it.
+- **Activity feed** — per project, recording task creates, moves (from → to),
+  field edits, comments, and deletes — grouped by day, click-through to the task.
+- **Mobile-first board** — on phones the Kanban becomes tab-switched single
+  columns with a touch-friendly **Move** menu; the desktop drag board stays.
 - **Boards** — Backlog / In Progress / In Review / Done, per project.
 - **Drag-and-drop** (`@dnd-kit`) — move and reorder cards across columns; pointer
   **and** keyboard accessible (focus a card’s grip, space to lift, arrows to move).
@@ -57,20 +80,50 @@ npm run typecheck   # tsc --noEmit
 
 ```
 server/                 Express API + SQLite (better-sqlite3)
-├── index.ts            app wiring, middleware, error handling, prod static serving
-├── db.ts               connection + schema
-├── repo.ts             data access (typed queries, position math, validation)
-├── seed.ts             deterministic seed data
-└── routes/             projects · tasks · meta (bootstrap/users/labels)
+├── index.ts            app wiring, auth middleware, write-guard, error handling
+├── db.ts               connection + schema (+ migration for auth columns/tables)
+├── auth.ts             password hashing, sessions, cookies, role middleware
+├── repo.ts             data access (typed queries, position math, activity logging)
+├── seed.ts             deterministic seed data (+ activity history, credentials)
+└── routes/             auth · projects · tasks · meta
 
 src/                    React client
-├── api/                fetch client + React Query hooks (queries + optimistic mutations)
-├── store/              AppData (bootstrap), Theme, CommandBar contexts
-├── hooks/              task panel (URL), filters, outside-click
+├── api/                fetch client + React Query hooks (queries + optimistic mutations) + auth
+├── store/              AppData (bootstrap + canEdit/auth gate), Theme, CommandBar
+├── hooks/              task panel (URL), filters, outside-click, media-query
 ├── lib/                constants (status/priority meta), formatting
-├── components/         ui/ · board/ · task/ · command/ · states/ · layout
-└── views/              BoardView · MyWorkView · NotFoundView
+├── components/         ui/ · board/ (Board + MobileBoard) · task/ · command/
+│                       · activity/ · auth/ · states/ · layout
+└── views/              BoardView (Board/Activity tabs) · MyWorkView · NotFoundView
 ```
+
+## Part B — what had to be restructured
+
+Absorbing auth, activity, mobile, and dark mode without breaking Part A took four
+focused changes:
+
+1. **Auth is a thin layer, not a rewrite.** `server/auth.ts` adds scrypt password
+   hashing, a `sessions` table, and cookie + role middleware. The DB change is a
+   real **migration** (`ALTER TABLE users ADD COLUMN role/password_hash` guarded by
+   `PRAGMA table_info`, plus `ensureCredentials()` backfill), so an existing Part A
+   database upgrades in place. `bootstrap` now returns the **session** user instead
+   of a hardcoded one, and a single `writeGuard` middleware blocks Viewer mutations
+   server-side. On the client, `AppDataProvider` became the auth gate: a `401`
+   renders the login screen, and it now exposes a `canEdit` flag the UI reads.
+2. **Activity is a write-side concern.** Mutating repo functions gained an
+   `actorId` and emit rows to an `activity` table (moves diff old→new status; edits
+   record changed fields). The feed is just another React Query resource,
+   invalidated by the same `settleTasks` the board mutations already used — so it
+   stays live with no extra plumbing.
+3. **Mobile didn’t fork the data, only the presentation.** A `useMediaQuery` hook
+   picks `MobileBoard` (tab-switched columns + a touch **Move** menu) vs the desktop
+   drag `Board`. Both render the same `TaskCard` and drive the same optimistic
+   `useUpdateTask`, so behavior is identical across form factors.
+4. **Read-only fell out of `canEdit`.** Rather than scatter role checks, the board
+   splits into `Board` (drag) and `ReadOnlyBoard` (static) and the task panel,
+   toolbar, command bar, and mobile board all branch on the one `canEdit` flag.
+5. **Dark mode** already existed from Part A (persisted theme context); Part B only
+   added a pre-paint script in `index.html` to kill the light-theme flash.
 
 ## Architecture decisions (the one-paragraph version)
 

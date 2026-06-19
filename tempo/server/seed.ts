@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import { db, initSchema, isEmpty } from './db'
+import { ensureCredentials } from './auth'
 import type { Priority, Status } from './types'
 
 /* deterministic RNG so the seed is identical every fresh run */
@@ -168,6 +169,9 @@ export function seed(): void {
     const insertComment = db.prepare(
       'INSERT INTO comments (id, task_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
     )
+    const insertActivity = db.prepare(
+      'INSERT INTO activity (id, project_id, task_id, actor_id, type, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
 
     PROJECTS.forEach((p, pIdx) => {
       const projectId = nanoid(10)
@@ -215,6 +219,17 @@ export function seed(): void {
         })
         positions[status] += 1024
 
+        const taskKey = `${p.key}-${i + 1}`
+        insertActivity.run(
+          nanoid(12),
+          projectId,
+          id,
+          assignee ?? pick(userIds),
+          'task_created',
+          JSON.stringify({ taskKey, taskTitle: title }),
+          created,
+        )
+
         // 0–2 labels
         const nLabels = Math.floor(rng() * 2.6)
         const shuffled = [...labelIds].sort(() => rng() - 0.5)
@@ -224,12 +239,18 @@ export function seed(): void {
         if (rng() > 0.65) {
           const n = 1 + Math.floor(rng() * 3)
           for (let c = 0; c < n; c++) {
-            insertComment.run(
+            const cAuthor = pick(userIds)
+            const cBody = pick(COMMENTS)
+            const cTime = ts(Math.floor(rng() * 20))
+            insertComment.run(nanoid(12), id, cAuthor, cBody, cTime)
+            insertActivity.run(
               nanoid(12),
+              projectId,
               id,
-              pick(userIds),
-              pick(COMMENTS),
-              ts(Math.floor(rng() * 20)),
+              cAuthor,
+              'commented',
+              JSON.stringify({ taskKey, taskTitle: title, excerpt: cBody }),
+              cTime,
             )
           }
         }
@@ -247,8 +268,11 @@ export function seedIfEmpty(): void {
 // `npm run seed` — wipe and reseed from scratch.
 function reseed(): void {
   initSchema()
-  db.exec('DELETE FROM comments; DELETE FROM task_labels; DELETE FROM tasks; DELETE FROM labels; DELETE FROM projects; DELETE FROM users;')
+  db.exec(
+    'DELETE FROM activity; DELETE FROM sessions; DELETE FROM comments; DELETE FROM task_labels; DELETE FROM tasks; DELETE FROM labels; DELETE FROM projects; DELETE FROM users;',
+  )
   seed()
+  ensureCredentials()
   console.log('Reseeded Tempo database.')
 }
 

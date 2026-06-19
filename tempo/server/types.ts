@@ -1,5 +1,6 @@
 export type Status = 'backlog' | 'in_progress' | 'in_review' | 'done'
 export type Priority = 'urgent' | 'high' | 'medium' | 'low' | 'none'
+export type Role = 'owner' | 'member' | 'viewer'
 
 export const STATUSES: Status[] = ['backlog', 'in_progress', 'in_review', 'done']
 export const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low', 'none']
@@ -10,6 +11,24 @@ export interface User {
   email: string
   initials: string
   color: string
+  role: Role
+}
+
+export type ActivityType =
+  | 'task_created'
+  | 'task_moved'
+  | 'task_updated'
+  | 'commented'
+  | 'task_deleted'
+
+export interface Activity {
+  id: string
+  projectId: string
+  taskId: string | null
+  type: ActivityType
+  actor: User
+  data: Record<string, unknown>
+  createdAt: string
 }
 
 export interface Project {
