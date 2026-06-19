@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   FlowBudget design tokens — semantic colors driven by CSS vars
+   so light/dark theming stays cohesive across the whole app.
+   ============================================================ */
+:root {
+  --canvas: #f5f6f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f7;
+  --border: #e7e9ef;
+  --border-strong: #d7dbe4;
+  --content: #11141a;
+  --muted: #5a6372;
+  --subtle: #9aa2b1;
+
+  --brand: #7c3aed;
+  --brand-soft: rgba(124, 58, 237, 0.12);
+  --brand-contrast: #ffffff;
+
+  --positive: #12a06a;
+  --negative: #e0484d;
+  --warning: #cc8400;
+
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #0a0c11;
+  --surface: #13161e;
+  --surface-2: #1a1e28;
+  --border: #242a36;
+  --border-strong: #313847;
+  --content: #e8eaf0;
+  --muted: #9aa2b1;
+  --subtle: #69717f;
+
+  --brand: #8b5cf6;
+  --brand-soft: rgba(139, 92, 246, 0.16);
+  --brand-contrast: #ffffff;
+
+  --positive: #2cb585;
+  --negative: #f06b6f;
+  --warning: #e0a32f;
+
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--content);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Numeric alignment for money figures */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus ring used across interactive elements */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--brand);
+  border-radius: 0.5rem;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid var(--canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--subtle);
+}
+
+/* Shimmer for skeleton loaders */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(125, 125, 125, 0.08),
+    transparent
+  );
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Recharts: remove the default focus outline on chart surfaces */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}
