@@ -11,6 +11,11 @@ export const db = new Database(join(DATA_DIR, 'tempo.db'))
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
+function hasColumn(table: string, column: string): boolean {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+  return cols.some((c) => c.name === column)
+}
+
 export function initSchema(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -65,11 +70,38 @@ export function initSchema(): void {
       created_at TEXT NOT NULL
     );
 
+    -- Part B: auth sessions
+    CREATE TABLE IF NOT EXISTS sessions (
+      token      TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL
+    );
+
+    -- Part B: per-project activity feed
+    CREATE TABLE IF NOT EXISTS activity (
+      id         TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      task_id    TEXT,
+      actor_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type       TEXT NOT NULL,
+      data       TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
     CREATE INDEX IF NOT EXISTS idx_comments_task ON comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_task_labels_task ON task_labels(task_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_project ON activity(project_id, created_at);
   `)
+
+  // Part B migration: add auth columns to an existing (Part A) users table.
+  if (!hasColumn('users', 'role')) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member'")
+  }
+  if (!hasColumn('users', 'password_hash')) {
+    db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+  }
 }
 
 export function isEmpty(): boolean {

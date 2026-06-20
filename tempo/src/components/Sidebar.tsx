@@ -1,15 +1,19 @@
 import { NavLink } from 'react-router-dom'
-import { Inbox, Moon, Search, Sun, X } from 'lucide-react'
+import { Inbox, LogOut, Moon, Search, Sun, X } from 'lucide-react'
 import { useApp } from '../store/AppData'
 import { useTheme } from '../store/Theme'
 import { useCommandBar } from '../store/CommandBar'
+import { useLogout } from '../api/auth'
 import { Avatar } from './ui/Avatar'
 import { cx } from '../lib/format'
+
+const ROLE_LABEL: Record<string, string> = { owner: 'Owner', member: 'Member', viewer: 'Viewer' }
 
 export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const { projects, currentUser } = useApp()
   const { theme, toggle } = useTheme()
   const { setOpen } = useCommandBar()
+  const logout = useLogout()
 
   const navItem = (active: boolean) =>
     cx(
@@ -97,10 +101,23 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         {/* Current user */}
         <div className="flex items-center gap-2.5 border-t border-border px-4 py-3">
           <Avatar user={currentUser} size={28} />
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-medium text-content">{currentUser.name}</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-[13px] font-medium text-content">{currentUser.name}</p>
+              <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+                {ROLE_LABEL[currentUser.role] ?? currentUser.role}
+              </span>
+            </div>
             <p className="truncate text-2xs text-subtle">{currentUser.email}</p>
           </div>
+          <button
+            onClick={() => logout.mutate()}
+            aria-label="Sign out"
+            title="Sign out"
+            className="rounded-lg p-1.5 text-subtle transition-colors hover:bg-surface-2 hover:text-content"
+          >
+            <LogOut size={15} />
+          </button>
         </div>
       </aside>
     </>

@@ -12,6 +12,17 @@
       rel="stylesheet"
     />
     <title>Tempo</title>
+    <script>
+      // Apply the persisted theme before first paint (default dark) to avoid a flash.
+      (function () {
+        try {
+          var t = localStorage.getItem('tempo.theme');
+          document.documentElement.classList.add(t === 'light' ? 'light' : 'dark');
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

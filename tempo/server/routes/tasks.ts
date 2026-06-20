@@ -26,7 +26,7 @@ router.get('/:id', (req, res) => {
 
 router.patch('/:id', (req, res, next) => {
   try {
-    res.json(updateTask(req.params.id, req.body ?? {}))
+    res.json(updateTask(req.params.id, req.body ?? {}, req.user!.id))
   } catch (err) {
     next(err)
   }
@@ -34,7 +34,7 @@ router.patch('/:id', (req, res, next) => {
 
 router.delete('/:id', (req, res, next) => {
   try {
-    deleteTask(req.params.id)
+    deleteTask(req.params.id, req.user!.id)
     res.status(204).end()
   } catch (err) {
     next(err)
@@ -43,9 +43,8 @@ router.delete('/:id', (req, res, next) => {
 
 router.post('/:id/comments', (req, res, next) => {
   try {
-    const { authorId, body } = req.body ?? {}
-    if (!authorId) return res.status(400).json({ error: 'authorId is required' })
-    res.status(201).json(addComment(req.params.id, authorId, body))
+    // Comment author is always the authenticated user.
+    res.status(201).json(addComment(req.params.id, req.user!.id, req.body?.body ?? ''))
   } catch (err) {
     next(err)
   }

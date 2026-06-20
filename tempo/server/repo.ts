@@ -1,6 +1,8 @@
 import { nanoid } from 'nanoid'
 import { db } from './db'
 import type {
+  Activity,
+  ActivityType,
   Comment,
   Label,
   Priority,
@@ -68,7 +70,10 @@ const mapUser = (r: any): User => r as User
 /* ------------------------------- reads -------------------------------- */
 
 export function listUsers(): User[] {
-  return db.prepare('SELECT * FROM users ORDER BY name').all() as User[]
+  // Never select password_hash.
+  return db
+    .prepare('SELECT id, name, email, initials, color, role FROM users ORDER BY name')
+    .all() as User[]
 }
 
 export function listLabels(): Label[] {
@@ -121,7 +126,7 @@ export function listComments(taskId: string): Comment[] {
     .prepare(
       `SELECT c.id, c.task_id, c.body, c.created_at,
               u.id AS u_id, u.name AS u_name, u.email AS u_email,
-              u.initials AS u_initials, u.color AS u_color
+              u.initials AS u_initials, u.color AS u_color, u.role AS u_role
        FROM comments c JOIN users u ON u.id = c.author_id
        WHERE c.task_id = ? ORDER BY c.created_at`,
     )
@@ -137,6 +142,7 @@ export function listComments(taskId: string): Comment[] {
       email: r.u_email,
       initials: r.u_initials,
       color: r.u_color,
+      role: r.u_role,
     },
   }))
 }
@@ -167,7 +173,7 @@ export interface CreateTaskInput {
   labelIds?: string[]
 }
 
-export function createTask(projectId: string, input: CreateTaskInput): Task {
+export function createTask(projectId: string, input: CreateTaskInput, actorId: string): Task {
   if (!getProject(projectId)) throw new HttpError(404, 'Project not found')
   const title = (input.title ?? '').trim()
   if (!title) throw new HttpError(400, 'Title is required')
@@ -199,7 +205,12 @@ export function createTask(projectId: string, input: CreateTaskInput): Task {
     updated_at: ts,
   })
   if (input.labelIds) setLabels(id, input.labelIds)
-  return getTask(id)!
+  const created = getTask(id)!
+  recordActivity(projectId, id, actorId, 'task_created', {
+    taskKey: created.key,
+    taskTitle: created.title,
+  })
+  return created
 }
 
 export interface UpdateTaskInput {
@@ -213,7 +224,7 @@ export interface UpdateTaskInput {
   labelIds?: string[]
 }
 
-export function updateTask(id: string, patch: UpdateTaskInput): Task {
+export function updateTask(id: string, patch: UpdateTaskInput, actorId: string): Task {
   const existing = getTask(id)
   if (!existing) throw new HttpError(404, 'Task not found')
 
@@ -252,12 +263,45 @@ export function updateTask(id: string, patch: UpdateTaskInput): Task {
     if (patch.labelIds !== undefined) setLabels(id, patch.labelIds)
   })
   tx()
-  return getTask(id)!
+
+  const updated = getTask(id)!
+  const meta = { taskKey: updated.key, taskTitle: updated.title }
+
+  if (patch.status !== undefined && patch.status !== existing.status) {
+    recordActivity(updated.projectId, id, actorId, 'task_moved', {
+      ...meta,
+      from: existing.status,
+      to: updated.status,
+    })
+  }
+
+  const changed: string[] = []
+  if (patch.title !== undefined && patch.title.trim() !== existing.title) changed.push('title')
+  if (patch.description !== undefined && patch.description !== existing.description) changed.push('description')
+  if (patch.priority !== undefined && patch.priority !== existing.priority) changed.push('priority')
+  if (patch.assigneeId !== undefined && (patch.assigneeId ?? null) !== existing.assigneeId) changed.push('assignee')
+  if (patch.dueDate !== undefined && (patch.dueDate ?? null) !== existing.dueDate) changed.push('due date')
+  if (patch.labelIds !== undefined && !sameSet(patch.labelIds, existing.labelIds)) changed.push('labels')
+  if (changed.length) {
+    recordActivity(updated.projectId, id, actorId, 'task_updated', { ...meta, fields: changed })
+  }
+  return updated
 }
 
-export function deleteTask(id: string): void {
-  const res = db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
-  if (res.changes === 0) throw new HttpError(404, 'Task not found')
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const sb = new Set(b)
+  return a.every((x) => sb.has(x))
+}
+
+export function deleteTask(id: string, actorId: string): void {
+  const task = getTask(id)
+  if (!task) throw new HttpError(404, 'Task not found')
+  db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+  recordActivity(task.projectId, null, actorId, 'task_deleted', {
+    taskKey: task.key,
+    taskTitle: task.title,
+  })
 }
 
 function setLabels(taskId: string, labelIds: string[]): void {
@@ -267,7 +311,8 @@ function setLabels(taskId: string, labelIds: string[]): void {
 }
 
 export function addComment(taskId: string, authorId: string, body: string): Comment {
-  if (!getTask(taskId)) throw new HttpError(404, 'Task not found')
+  const task = getTask(taskId)
+  if (!task) throw new HttpError(404, 'Task not found')
   const text = (body ?? '').trim()
   if (!text) throw new HttpError(400, 'Comment cannot be empty')
   const id = nanoid(12)
@@ -276,7 +321,62 @@ export function addComment(taskId: string, authorId: string, body: string): Comm
   ).run(id, taskId, authorId, text, now())
   // touch the task so boards re-sort if needed
   db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(now(), taskId)
+  recordActivity(task.projectId, taskId, authorId, 'commented', {
+    taskKey: task.key,
+    taskTitle: task.title,
+    excerpt: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+  })
   return listComments(taskId).find((c) => c.id === id)!
+}
+
+/* ------------------------------ activity ------------------------------ */
+
+export function recordActivity(
+  projectId: string,
+  taskId: string | null,
+  actorId: string,
+  type: ActivityType,
+  data: Record<string, unknown>,
+): void {
+  db.prepare(
+    'INSERT INTO activity (id, project_id, task_id, actor_id, type, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(nanoid(12), projectId, taskId, actorId, type, JSON.stringify(data), now())
+}
+
+export function listActivity(projectId: string, limit = 60): Activity[] {
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.project_id, a.task_id, a.type, a.data, a.created_at,
+              u.id AS u_id, u.name AS u_name, u.email AS u_email,
+              u.initials AS u_initials, u.color AS u_color, u.role AS u_role
+       FROM activity a JOIN users u ON u.id = a.actor_id
+       WHERE a.project_id = ? ORDER BY a.created_at DESC LIMIT ?`,
+    )
+    .all(projectId, limit) as any[]
+  return rows.map((r) => ({
+    id: r.id,
+    projectId: r.project_id,
+    taskId: r.task_id,
+    type: r.type,
+    data: safeParse(r.data),
+    createdAt: r.created_at,
+    actor: {
+      id: r.u_id,
+      name: r.u_name,
+      email: r.u_email,
+      initials: r.u_initials,
+      color: r.u_color,
+      role: r.u_role,
+    },
+  }))
+}
+
+function safeParse(s: string): Record<string, unknown> {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return {}
+  }
 }
 
 /* ------------------------------- errors ------------------------------- */

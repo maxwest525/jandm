@@ -13,7 +13,7 @@ import { CreateTaskModal } from '../task/CreateTaskModal'
 
 export function CommandBar() {
   const { open, setOpen } = useCommandBar()
-  const { projects, projectById } = useApp()
+  const { projects, projectById, canEdit } = useApp()
   const navigate = useNavigate()
   const { openTask } = useTaskPanel()
   const qc = useQueryClient()
@@ -70,21 +70,23 @@ export function CommandBar() {
                   No results for “{search}”.
                 </Command.Empty>
 
-                <Command.Group heading="Create" className="cmd-group">
-                  {projects.map((p) => (
-                    <Command.Item
-                      key={`create-${p.id}`}
-                      value={`new task create ${p.name} ${p.key}`}
-                      onSelect={() => run(() => setCreateProjectId(p.id))}
-                      className="cmd-item"
-                    >
-                      <Plus size={16} className="text-accent" />
-                      <span>
-                        New task in <span className="font-medium text-content">{p.name}</span>
-                      </span>
-                    </Command.Item>
-                  ))}
-                </Command.Group>
+                {canEdit && (
+                  <Command.Group heading="Create" className="cmd-group">
+                    {projects.map((p) => (
+                      <Command.Item
+                        key={`create-${p.id}`}
+                        value={`new task create ${p.name} ${p.key}`}
+                        onSelect={() => run(() => setCreateProjectId(p.id))}
+                        className="cmd-item"
+                      >
+                        <Plus size={16} className="text-accent" />
+                        <span>
+                          New task in <span className="font-medium text-content">{p.name}</span>
+                        </span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                )}
 
                 <Command.Group heading="Navigation" className="cmd-group">
                   <Command.Item value="my work assigned" onSelect={() => run(() => navigate('/my-work'))} className="cmd-item">

@@ -1,11 +1,14 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useBootstrap } from '../api/queries'
+import { ApiError } from '../api/client'
 import type { Label, Project, User } from '../types'
 import { FullScreenLoader } from '../components/states/FullScreenLoader'
 import { FullScreenError } from '../components/states/FullScreenError'
+import { LoginView } from '../components/auth/LoginView'
 
 interface AppDataState {
   currentUser: User
+  canEdit: boolean
   users: User[]
   projects: Project[]
   labels: Label[]
@@ -27,6 +30,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     const currentUser = userMap.get(data.currentUserId) ?? data.users[0]
     return {
       currentUser,
+      canEdit: currentUser.role !== 'viewer',
       users: data.users,
       projects: data.projects,
       labels: data.labels,
@@ -37,13 +41,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [data])
 
   if (isLoading) return <FullScreenLoader />
-  if (isError || !value)
+  if (isError) {
+    // Not logged in → show the login screen instead of an error.
+    if (error instanceof ApiError && error.status === 401) return <LoginView />
     return (
       <FullScreenError
         message={(error as Error)?.message ?? 'Could not reach the Tempo server.'}
         onRetry={() => refetch()}
       />
     )
+  }
+  if (!value) return <FullScreenLoader />
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
